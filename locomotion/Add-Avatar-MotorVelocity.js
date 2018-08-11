@@ -12,7 +12,7 @@
 
     function scriptEnding() {
         console.log("### in script ending");
-        MyAvatar.motorVelocity = {x: 0, y: 0, z: 3};
+        MyAvatar.motorVelocity = {x: 0, y: 0, z: 0};
         MyAvatar.motorTimescale = 0;
     }    
 
