@@ -1,15 +1,21 @@
 (function() { 
 
     var FORWARD_VELOCITY = { x: 0, y: 0, z: -1}; // m/s
+    var NOOP = function () {};
+    var MAPPING_NAME = "Cube-Pooper";
+
     var DELTA_PITCH = 15;
     var DELTA_YAW = 15;
-    var TIMEOUT_PITCH = 100;
-    var TIMEOUT_YAW = 100;
+    var TIMEOUT_PITCH = 500;
+    var TIMEOUT_YAW = 500;
+
+    var EULER_UP = { x: DELTA_PITCH, y: 0, z: -1}; // Quat.fromPitchYawRollDegrees(DELTA_PITCH, 0, 0);
+    var EULER_DOWN = { x: -DELTA_PITCH, y: 0, z: -1}; // Quat.fromPitchYawRollDegrees(-DELTA_PITCH, 0, 0);
+    var EULER_LEFT = { x: 0, y: DELTA_YAW, z: -1}; // Quat.fromPitchYawRollDegrees(0, DELTA_YAW, 0);
+    var EULER_RIGHT = { x: 0, y: -DELTA_YAW, z: -1}; // Quat.fromPitchYawRollDegrees(0, -DELTA_YAW, 0);
+
     var changeableYaw = true;
     var changeablePitch = true;
-
-    var curCubePitch;
-    var curCubeYaw;
     
     // Dependencies
     // /////////////////////////////////////////////////////////////////////////
@@ -34,102 +40,63 @@
     LOG_CONFIG[LOG_ARCHIVE] = false;
     var log = Helper.Debug.log(LOG_CONFIG);
 
-    // Init
-    // /////////////////////////////////////////////////////////////////////////
     var controllerMapping = null,
         cubeID = Entities.addEntity({ 
             type: "Box", 
             collisonless: true, 
-            position: MyAvatar.position,
+            position: Camera.position,
             rotation: MyAvatar.orientation,
-            velocity: FORWARD_VELOCITY,
+            //velocity: FORWARD_VELOCITY,
             damping: 0
          });
 
-        Entities
-
-        curCubePitch = MyAvatar.bodyPitch;
-        curCubeYaw = MyAvatar.bodyYaw;
-
-    MyAvatar.orientation = Quat.fromPitchYawRollDegrees(0,0,0);
-    
-    // Consts
-    // /////////////////////////////////////////////////////////////////////////
-    var MAPPING_NAME = "Cube-Pooper";
-
-    // Constructor
-    // /////////////////////////////////////////////////////////////////////////
-
-    // Collections
-    // /////////////////////////////////////////////////////////////////////////
-    // var 
-
-    // Helper Functions
-    // /////////////////////////////////////////////////////////////////////////
-    function moveCube(direction) {
-        var cubePosition = Entities.getEntityProperties(cubeID, ["position"]).position;
-        var newPosition = VEC3.sum(cubePosition, direction);
-        Entities.editEntity(cubeID, {
-            position: newPosition
-        })
-    };
-
-    // Procedural Functions
-    // /////////////////////////////////////////////////////////////////////////
-
-
-    // Main
-    // /////////////////////////////////////////////////////////////////////////
+    // MyAvatar.orientation = Quat.fromPitchYawRollDegrees(0,0,0);
 
     controllerMapping = Controller.newMapping(MAPPING_NAME);
 
     // R STICK UP DOWN SNAP PITCH
-    function snapPitch (direction) {
-        // invisible cube guiding avatar forward
-
-        var change = direction > 0 ? 1 : -1;
-        var curPitch = curCubePitch;
-        var newPitch = curPitch + DELTA_PITCH * change;
-        var properties = Entities.getEntityProperties(cubeID, "rotation");
-        var properties 
-
-        if (newPitch > 90 || newPitch < -90) {
-            // do not use
-            return;
-        } else {
-            curCubePitch = newPitch;
-            Entities.editEntity(cubeID, {
-                rotation: 
-            });
-        }
-    }
-
     // L STICK LEFT RIGHT SNAP YAW
-    function snapYaw (direction) {
+    function changeDirection(direction, value) {
+
+        print("CHANGE VALUE");
+
         // invisible cube guiding avatar forward
+        var orientation = Quat.getForward(MyAvatar.orientation);
+        var eulerOrientation = Quat.safeEulerAngles(orientation);
+        var isPositive = value > 0;
 
-        var change = direction > 0 ? 1 : -1;
-        var curYaw = MyAvatar.bodyYaw;
-        var newYaw = curYaw + DELTA_YAW * change;
-
-        if (newYaw > 90 || newYaw < -90) {
-            // do not use
+        if (direction === "pitch" 
+            && (eulerOrientation.x >= 89.8 && isPositive)
+            || (eulerOrientation.x <= -89.8 && !isPositive)) {
+            // is facing straight up and wants to go up
+            // or is facing straight down and wants to go down
             return;
-        } else {
-            MyAvatar.bodyYaw = newYaw;
-            Entities.editEntity(cubeID, {
-                rotation: MyAvatar.orientation
-            });
         }
+
+        var delta = direction === "pitch" 
+            ? isPositive ? EULER_UP : EULER_DOWN // pitch
+            : isPositive ? EULER_LEFT : EULER_RIGHT; // yaw
+
+        var euler = Vec3.sum(eulerOrientation, delta);
+        var quat = Quat.fromPitchYawRollDegrees(euler.x, euler.y, euler.z);
+        var newDirection = Quat.multiply(orientation, quat);
+        Entities.editEntity(cubeID, {
+            rotation: newDirection,
+            // position: Camera.position
+        });
     }
 
-    
+    controllerMapping.from(Controller.Standard.RX).to(NOOP);
+    controllerMapping.from(Controller.Standard.LY).to(NOOP);
     
     controllerMapping.from(Controller.Standard.RY).to(function(value) {
         log(LOG_VALUE, "Value", value);
 
-        if (changeablePitch && (value > 0.3 || value < -0.3)) {
-            snapPitch(value);
+        if (changeablePitch && (value > 0.8 || value < -0.8)) {
+            Entities.editEntity(cubeID, {
+                position: Camera.position
+            });
+            changeDirection("pitch", value);
             changeablePitch = false;
 
             Script.setTimeout(function () {
@@ -139,14 +106,12 @@
 
     });
 
-    var noop = function () {};
-
-    controllerMapping.from(Controller.Standard.RX).to(noop);
-    controllerMapping.from(Controller.Standard.LY).to(noop);
-
     controllerMapping.from(Controller.Standard.LX).to(function(value) {
-        if (changeableYaw && (value > 0.3 || value < -0.3)) {
-            snapYaw(value);
+        if (changeableYaw && (value > 0.8 || value < -0.8)) {
+            Entities.editEntity(cubeID, {
+                position: { x: 0, y: 0, z: 0}
+            });
+            changeDirection("yaw", value);
             changeableYaw = false;
 
             Script.setTimeout(function () {
@@ -155,6 +120,34 @@
         }
     });
 
+    Controller.enableMapping(MAPPING_NAME);
+
+    MyAvatar.setParentID(cubeID);
+
+    function scriptEnding() {
+        console.log("### in script ending");
+        Controller.disableMapping(MAPPING_NAME);
+        Entities.deleteEntity(cubeID);
+    }    
+
+    Script.scriptEnding.connect(scriptEnding);
+
+
+})();
+
+
+
+
+
+/*
+
+    function moveCube(direction) {
+        var cubePosition = Entities.getEntityProperties(cubeID, ["position"]).position;
+        var newPosition = VEC3.sum(cubePosition, direction);
+        Entities.editEntity(cubeID, {
+            position: newPosition
+        })
+    };
     
     // controllerMapping.from(Controller.Standard.LX).to(function(value) {
     //     log(LOG_VALUE, "Value", value);
@@ -233,19 +226,24 @@
     //     moveCube(vec(value,0));
     // });
 
-    // Controller.enableMapping(MAPPING_NAME);
-
-    MyAvatar.setParentID(cubeID);
-
-    // Cleanup
-    // /////////////////////////////////////////////////////////////////////////
-    function scriptEnding() {
-        console.log("### in script ending");
-        Controller.disableMapping(MAPPING_NAME);
-        Entities.deleteEntity(cubeID);
-        
-    }    
-
-    Script.scriptEnding.connect(scriptEnding);
-})();
     
+    
+    // function snapYaw (direction) {
+    //     // invisible cube guiding avatar forward
+
+    //     var change = direction > 0 ? QUAT_LEFT : QUAT_RIGHT;
+    //     var newYaw = curYaw + DELTA_YAW * change;
+
+    //     if (newYaw > 90 || newYaw < -90) {
+    //         // do not use
+    //         return;
+    //     } else {
+    //         MyAvatar.bodyYaw = newYaw;
+    //         Entities.editEntity(cubeID, {
+    //             rotation: MyAvatar.orientation
+    //         });
+    //     }
+    // }
+
+    
+    */
